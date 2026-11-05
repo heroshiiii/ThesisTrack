@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 node_modules/
+.vercel/
 apps/client/dist/
 apps/server/dist/
 *.tsbuildinfo

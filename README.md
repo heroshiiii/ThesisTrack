@@ -1,6 +1,6 @@
 # ThesisTrack
 
-A responsive thesis and research progress workspace for students and advisers. The frontend is React + TypeScript + Vite; the API is Express on Vercel Functions; PostgreSQL is accessed through Neon’s serverless driver.
+A responsive thesis and research progress workspace for students and advisers. The frontend is React + TypeScript + Vite and the API is Express; both deploy as Vercel services. PostgreSQL is accessed through Neon’s serverless driver.
 
 ## Run locally
 
@@ -16,10 +16,10 @@ The demo dashboard can be viewed without an account. Create an account and sign 
 ## Deploy to Vercel
 
 1. Create a PostgreSQL database with [Neon](https://neon.tech/) and run [`database/schema.sql`](./database/schema.sql) in its SQL editor. The schema is safe to re-run and adds the adviser and document-name columns to earlier installs.
-2. Import this repository into Vercel. The included `vercel.json` builds the Vite frontend, and the catch-all function in `api/` serves `/api/*`.
+2. Import this repository into Vercel. The root `vercel.json` defines a Vite `client` service and an Express `server` service. Public requests to `/api/*` go to the server; all other paths go to the client.
 3. Create a private Blob store in the Vercel dashboard and connect it to your project. Add `DATABASE_URL`, `JWT_SECRET`, and `BLOB_READ_WRITE_TOKEN` under Vercel **Project Settings → Environment Variables** for each deployment environment. For local development, use the store's read-write token from Vercel and never commit it.
 4. Documents upload directly from the browser to the private Blob store using short-lived, project-scoped upload tokens. Downloads are streamed through the authenticated API; no public document URLs or bucket CORS configuration are needed.
-5. Deploy. Use a fresh, private `JWT_SECRET` and never commit `.env` files.
+5. Use `vercel dev` to test both services together locally, then deploy. Use a fresh, private `JWT_SECRET` and never commit `.env` files.
 
 ### Set up coordinator and adviser accounts
 
