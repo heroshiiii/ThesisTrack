@@ -81,6 +81,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [backendError, setBackendError] = useState("");
   useDialogAccessibility(Boolean(modal), () => {
     setModal(null);
@@ -284,6 +285,8 @@ function App() {
   }
 
   async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
     try {
       await api.logout();
       setUser(null);
@@ -293,6 +296,8 @@ function App() {
       setToast("You've been signed out.");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Couldn't sign out.");
+    } finally {
+      setSigningOut(false);
     }
   }
 
@@ -337,7 +342,9 @@ function App() {
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => setToast("You're all caught up!")}>
               <Icon name="bell" size={19} /><span className="notification-dot" />
             </button>
-            {!user && <button className="sign-in-button" onClick={() => { setBackendError(""); setModal("auth"); }}>Sign in</button>}
+            {user
+              ? <button className="sign-in-button" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? "Signing out..." : "Log out"}</button>
+              : <button className="sign-in-button" onClick={() => { setBackendError(""); setModal("auth"); }}>Sign in</button>}
           </div>
         </header>
 
