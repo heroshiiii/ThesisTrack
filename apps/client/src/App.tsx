@@ -218,9 +218,6 @@ function App() {
     [dashboard, projects, user],
   );
   const nextDeadlineDays = upcomingProjects.length ? daysUntil(upcomingProjects[0].dueDate) : null;
-  const firstName = user?.name.split(" ")[0] ?? "John";
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const todayLabel = new Date().toLocaleDateString("en-PH", {
     weekday: "long",
     month: "long",
@@ -369,8 +366,8 @@ function App() {
         </div>
         <button className="nav-item settings-link" onClick={() => setToast("Settings are coming soon.")}><Icon name="settings" size={19} /><span>Settings</span></button>
         <div className="profile">
-          <div className="avatar avatar-user">{user ? initials(user.name) : "JO"}</div>
-          <div className="profile-copy"><strong>{user?.name ?? "John Oliveros"}</strong><span>{user?.role ?? "Student researcher"}</span></div>
+          <div className="avatar avatar-user">{user ? initials(user.name) : "G"}</div>
+          <div className="profile-copy"><strong>{user?.name ?? "Guest"}</strong><span>{user?.role ?? "Student researcher"}</span></div>
           <button className="icon-button profile-menu" aria-label={user ? "Sign out" : "Sign in"} onClick={() => user ? void signOut() : setModal("auth")}>
             <Icon name={user ? "logout" : "chevron"} size={17} />
           </button>
@@ -395,7 +392,7 @@ function App() {
           <section className="welcome-row">
             <div>
               <div className="date-line"><span className="date-dot" /> {todayLabel}</div>
-              <h1>{greeting}, {firstName}<span className="wave">✳</span></h1>
+              <h1>Good morning<span className="wave">✳</span></h1>
               <p className="welcome-subtitle">A little progress today makes a big difference tomorrow.</p>
             </div>
             {(user?.role === "student" || user?.role === "admin" || !user) && <button className="primary-button" onClick={() => { setEditingProject(null); setBackendError(""); setModal("project"); }}><Icon name="plus" size={18} /> New research</button>}
