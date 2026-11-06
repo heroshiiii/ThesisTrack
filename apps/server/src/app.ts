@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { errors, SignJWT, jwtVerify } from "jose";
+import { Resend } from "resend";
 import { z } from "zod";
 import { BlobNotFoundError, del, get, head } from "@vercel/blob";
 import { handleUpload } from "@vercel/blob/client";
@@ -15,6 +16,7 @@ import { getStorageToken } from "./storage.js";
 const app = express();
 const cookieName = "thesistrack_session";
 const sessionDuration = 14 * 24 * 60 * 60;
+const resetTokenDurationMs = 30 * 60 * 1000;
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
@@ -117,6 +119,13 @@ const registerSchema = z.object({
 });
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
+  password: z.string().min(8).max(72),
+});
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().email().max(254),
+});
+const resetPasswordSchema = z.object({
+  token: z.string().min(40).max(100).regex(/^[A-Za-z0-9_-]+$/),
   password: z.string().min(8).max(72),
 });
 const projectSchema = z.object({
@@ -234,6 +243,112 @@ app.post("/api/auth/login", asyncRoute(async (req, res) => {
   const user = publicUser(account);
   await setSession(res, user);
   res.json({ user });
+}));
+
+app.post("/api/auth/forgot-password", asyncRoute(async (req, res) => {
+  const input = forgotPasswordSchema.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const emailFrom = process.env.EMAIL_FROM;
+  const appBaseUrl = process.env.APP_BASE_URL;
+  if (!apiKey || !emailFrom || !appBaseUrl) {
+    throw new ApiError(503, "Password reset is temporarily unavailable. Please try again later.");
+  }
+  let resetUrl: URL;
+  try {
+    resetUrl = new URL("/", appBaseUrl);
+  } catch {
+    throw new ApiError(503, "Password reset is temporarily unavailable. Please try again later.");
+  }
+  if (process.env.NODE_ENV === "production" && resetUrl.protocol !== "https:") {
+    throw new ApiError(503, "Password reset is temporarily unavailable. Please try again later.");
+  }
+
+  const sql = getDatabase();
+  const email = input.data.email.toLowerCase();
+  const users = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
+  if (users.length) {
+    const userId = (users[0] as { id: string }).id;
+    const recentRequests = await sql`
+      SELECT 1
+      FROM password_reset_tokens
+      WHERE user_id = ${userId} AND created_at > NOW() - INTERVAL '1 minute'
+      LIMIT 1
+    `;
+    if (recentRequests.length) {
+      res.json({ message: "If an account exists for that email, a password reset link will be sent." });
+      return;
+    }
+
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + resetTokenDurationMs);
+    await sql.transaction([
+      sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId} AND used_at IS NULL`,
+      sql`INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+          VALUES (${userId}, ${tokenHash}, ${expiresAt})`,
+    ]);
+
+    resetUrl.searchParams.set("reset", token);
+    const resetLink = resetUrl.toString();
+    const resend = new Resend(apiKey);
+    const { error } = await resend.emails.send({
+      from: emailFrom,
+      to: email,
+      subject: "Reset your ThesisTrack password",
+      text: `We received a request to reset your ThesisTrack password. Use this link within 30 minutes: ${resetLink}\n\nIf you did not request this, you can ignore this email.`,
+      html: `<p>We received a request to reset your ThesisTrack password.</p><p><a href="${resetLink}">Reset your password</a></p><p>This link expires in 30 minutes. If you did not request this, you can ignore this email.</p>`,
+    });
+    if (error) {
+      console.error("Resend password reset email failed:", error);
+      await sql`DELETE FROM password_reset_tokens WHERE token_hash = ${tokenHash} AND used_at IS NULL`;
+      throw new ApiError(503, "Password reset is temporarily unavailable. Please try again later.");
+    }
+  }
+
+  res.json({ message: "If an account exists for that email, a password reset link will be sent." });
+}));
+
+app.post("/api/auth/reset-password", asyncRoute(async (req, res) => {
+  const input = resetPasswordSchema.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ error: "The reset link is invalid or has expired. Request a new one." });
+    return;
+  }
+
+  const tokenHash = createHash("sha256").update(input.data.token).digest("hex");
+  const passwordHash = await bcrypt.hash(input.data.password, 12);
+  const sql = getDatabase();
+  const rows = await sql`
+    WITH consumed_token AS (
+      UPDATE password_reset_tokens
+      SET used_at = NOW()
+      WHERE token_hash = ${tokenHash}
+        AND used_at IS NULL
+        AND expires_at > NOW()
+      RETURNING user_id
+    )
+    UPDATE users
+    SET password_hash = ${passwordHash}, updated_at = NOW()
+    WHERE id = (SELECT user_id FROM consumed_token)
+    RETURNING id
+  `;
+  if (!rows.length) {
+    res.status(400).json({ error: "The reset link is invalid or has expired. Request a new one." });
+    return;
+  }
+
+  res.clearCookie(cookieName, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+  res.json({ message: "Your password has been reset. You can now sign in." });
 }));
 
 app.get("/api/auth/me", asyncRoute(async (req, res) => {

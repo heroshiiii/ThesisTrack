@@ -191,6 +191,9 @@ h1,h2,h3,p { margin-top: 0; }
 .form-stack input::placeholder { color: #b7b6c0; }
 .modal-submit { width: 100%; margin-top: 5px; }
 .form-error { margin: -3px 0 14px; padding: 9px 10px; color: #a85151; border: 1px solid #f2dddd; border-radius: 7px; background: #fff7f7; font-size: 10px; line-height: 1.45; }
+.form-success { margin: -3px 0 14px; padding: 9px 10px; color: #477a68; border: 1px solid #dcefe7; border-radius: 7px; background: #f3fbf7; font-size: 10px; line-height: 1.45; }
+.auth-link { justify-self: end; padding: 0; color: #7362c7; border: 0; background: transparent; font-size: 10px; font-weight: 700; }
+.auth-link:hover,.auth-switch button:hover { color: #5544aa; text-decoration: underline; }
 .auth-switch { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 17px; color: #9998a8; font-size: 10px; }
 .auth-switch button { padding: 3px; color: #7362c7; border: 0; background: transparent; font-size: 10px; font-weight: 700; }
 .toast-message { position: fixed; z-index: 12; right: 25px; bottom: 24px; display: flex; align-items: center; gap: 9px; max-width: min(430px, calc(100vw - 32px)); padding: 12px 16px 12px 11px; color: #4d4a61; border: 1px solid #efedf4; border-radius: 10px; background: white; box-shadow: 0 8px 30px rgba(45,40,78,.14); font-size: 11px; animation: rise-in .2s ease-out; }

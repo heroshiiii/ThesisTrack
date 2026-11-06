@@ -22,6 +22,8 @@ type IconName =
   | "check"
   | "spark";
 
+type AuthMode = "login" | "register" | "forgot" | "reset";
+
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
     grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /></>,
@@ -76,17 +78,39 @@ function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [advisers, setAdvisers] = useState<Adviser[]>([]);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [modal, setModal] = useState<"project" | "auth" | null>(null);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("reset") ?? "");
+  const [modal, setModal] = useState<"project" | "auth" | null>(() =>
+    new URLSearchParams(window.location.search).has("reset") ? "auth" : null);
+  const [authMode, setAuthMode] = useState<AuthMode>(() =>
+    new URLSearchParams(window.location.search).has("reset") ? "reset" : "login");
+  const [authNotice, setAuthNotice] = useState("");
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [backendError, setBackendError] = useState("");
+
+  function clearResetLink() {
+    setResetToken("");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("reset");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function closeAuth() {
+    setModal(null);
+    setBackendError("");
+    setAuthNotice("");
+    if (authMode === "reset") {
+      clearResetLink();
+      setAuthMode("login");
+    }
+  }
+
   useDialogAccessibility(Boolean(modal), () => {
     setModal(null);
     setEditingProject(null);
-    setBackendError("");
+    closeAuth();
   });
 
   const navItems: { label: string; icon: IconName }[] = user?.role === "adviser"
@@ -211,11 +235,30 @@ function App() {
     event.preventDefault();
     setLoading(true);
     setBackendError("");
+    setAuthNotice("");
     const form = new FormData(event.currentTarget);
-    const name = String(form.get("name") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
     try {
+      if (authMode === "forgot") {
+        const { message } = await api.requestPasswordReset(email);
+        setAuthNotice(message);
+        return;
+      }
+      if (authMode === "reset") {
+        const confirmation = String(form.get("confirmPassword") ?? "");
+        if (password !== confirmation) {
+          setBackendError("The passwords don't match.");
+          return;
+        }
+        const { message } = await api.resetPassword(resetToken, password);
+        clearResetLink();
+        setAuthMode("login");
+        setAuthNotice(message);
+        return;
+      }
+
+      const name = String(form.get("name") ?? "").trim();
       const result = authMode === "register"
         ? await api.register(name, email, password)
         : await api.login(email, password);
@@ -453,17 +496,24 @@ function App() {
         </form>
       </section></div>}
 
-      {modal === "auth" && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}><section className="modal-card auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
-        <button className="modal-close icon-button" onClick={() => { setModal(null); setBackendError(""); }} aria-label="Close"><Icon name="close" /></button>
-        <div className="modal-icon"><Icon name="spark" size={21} /></div><div className="modal-eyebrow">YOUR RESEARCH, IN ONE PLACE</div><h2 id="auth-modal-title">{authMode === "login" ? "Welcome back" : "Create your account"}</h2><p className="modal-description">{authMode === "login" ? "Sign in to pick up where you left off." : "Let's make progress feel a little more manageable."}</p>
-        {backendError && <div className="form-error" role="alert">{backendError}</div>}
-        <form onSubmit={submitAuth} className="form-stack">
-          {authMode === "register" && <label>Your name<input name="name" autoComplete="name" placeholder="e.g. Juan Dela Cruz" required minLength={2} maxLength={100} /></label>}
-          <label>School email<input name="email" type="email" autoComplete="email" placeholder="you@school.edu.ph" required maxLength={254} /></label>
-          <label>Password<input name="password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="At least 8 characters" required minLength={8} maxLength={72} /></label>
-          <button className="primary-button modal-submit" type="submit" disabled={loading}>{loading ? "Please wait..." : authMode === "login" ? "Sign in" : "Create account"} <Icon name="arrow" size={16} /></button>
-        </form>
-        <div className="auth-switch">{authMode === "login" ? "New to ThesisTrack?" : "Already have an account?"}<button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setBackendError(""); }}>{authMode === "login" ? "Create an account" : "Sign in"}</button></div>
+      {modal === "auth" && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAuth(); }}><section className="modal-card auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+      <button className="modal-close icon-button" onClick={closeAuth} aria-label="Close"><Icon name="close" /></button>
+      <div className="modal-icon"><Icon name="spark" size={21} /></div><div className="modal-eyebrow">YOUR RESEARCH, IN ONE PLACE</div>
+      <h2 id="auth-modal-title">{authMode === "login" ? "Welcome back" : authMode === "register" ? "Create your account" : authMode === "forgot" ? "Forgot your password?" : "Choose a new password"}</h2>
+      <p className="modal-description">{authMode === "login" ? "Sign in to pick up where you left off." : authMode === "register" ? "Let's make progress feel a little more manageable." : authMode === "forgot" ? "Enter your school email and we'll send a reset link if an account matches." : "Your new password must be at least 8 characters."}</p>
+      {backendError && <div className="form-error" role="alert">{backendError}</div>}
+      {authNotice && <div className="form-success" role="status">{authNotice}</div>}
+      <form onSubmit={submitAuth} className="form-stack">
+        {authMode === "register" && <label>Your name<input name="name" autoComplete="name" placeholder="e.g. Juan Dela Cruz" required minLength={2} maxLength={100} /></label>}
+        {(authMode === "login" || authMode === "register" || authMode === "forgot") && <label>School email<input name="email" type="email" autoComplete="email" placeholder="you@school.edu.ph" required maxLength={254} /></label>}
+        {(authMode === "login" || authMode === "register" || authMode === "reset") && <label>{authMode === "reset" ? "New password" : "Password"}<input name="password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="At least 8 characters" required minLength={8} maxLength={72} /></label>}
+        {authMode === "reset" && <label>Confirm new password<input name="confirmPassword" type="password" autoComplete="new-password" placeholder="Re-enter your new password" required minLength={8} maxLength={72} /></label>}
+        {authMode === "login" && <button className="auth-link" type="button" onClick={() => { setAuthMode("forgot"); setBackendError(""); setAuthNotice(""); }}>Forgot password?</button>}
+        <button className="primary-button modal-submit" type="submit" disabled={loading}>{loading ? "Please wait..." : authMode === "login" ? "Sign in" : authMode === "register" ? "Create account" : authMode === "forgot" ? "Send reset link" : "Reset password"} <Icon name="arrow" size={16} /></button>
+      </form>
+      {authMode === "login" || authMode === "register"
+        ? <div className="auth-switch">{authMode === "login" ? "New to ThesisTrack?" : "Already have an account?"}<button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setBackendError(""); setAuthNotice(""); }}>{authMode === "login" ? "Create an account" : "Sign in"}</button></div>
+        : <div className="auth-switch"><button onClick={() => { if (authMode === "reset") clearResetLink(); setAuthMode("login"); setBackendError(""); setAuthNotice(""); }}>Back to sign in</button></div>}
       </section></div>}
       {toast && <div className="toast-message" role="status"><span className="toast-check"><Icon name="check" size={15} /></span>{toast}</div>}
     </div>

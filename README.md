@@ -6,7 +6,7 @@ A responsive thesis and research progress workspace for students and advisers. T
 
 Requirements: Node.js 20+, Docker Desktop (or a PostgreSQL 16 database), and a private Vercel Blob store for document uploads.
 
-1. Copy `.env.example` to `.env`. Set `JWT_SECRET` to a unique random value of at least 32 characters and set `BLOB_READ_WRITE_TOKEN` from your Vercel Blob store.
+1. Copy `.env.example` to `.env`. Set `JWT_SECRET` to a unique random value of at least 32 characters, `BLOB_READ_WRITE_TOKEN` from your Vercel Blob store, and the Resend settings described below.
 2. Start the local database with `docker compose up -d database`. The schema is applied automatically on the first start.
 3. Run `npm install`, then `npm run dev`.
 4. Open the Vite URL shown in the terminal (usually `http://localhost:5173`).
@@ -19,7 +19,9 @@ The demo dashboard can be viewed without an account. Create an account and sign 
 2. Import this repository into Vercel. The root `vercel.json` defines a Vite `client` service and an Express `server` service. Public requests to `/api/*` go to the server; all other paths go to the client.
 3. Create a private Blob store in the Vercel dashboard and connect it to your project. Add `DATABASE_URL`, `JWT_SECRET`, and `BLOB_READ_WRITE_TOKEN` under Vercel **Project Settings → Environment Variables** for each deployment environment. For local development, use the store's read-write token from Vercel and never commit it.
 4. Documents upload directly from the browser to the private Blob store using short-lived, project-scoped upload tokens. Downloads are streamed through the authenticated API; no public document URLs or bucket CORS configuration are needed.
-5. Use `vercel dev` to test both services together locally, then deploy. Use a fresh, private `JWT_SECRET` and never commit `.env` files.
+5. In Resend, create an API key and verify a sender domain. Set `RESEND_API_KEY`, `EMAIL_FROM` (for example, `ThesisTrack <no-reply@your-domain.com>`), and `APP_BASE_URL` (the deployed site URL) in Vercel for each environment. For local development, set `APP_BASE_URL=http://localhost:5173`. Never commit these secrets.
+6. Apply [`database/schema.sql`](./database/schema.sql) to the same Neon database used by the deployment to create the password-reset token table. Re-running the schema is safe.
+7. Use `vercel dev` to test both services together locally, then deploy. Use a fresh, private `JWT_SECRET` and never commit `.env` files.
 
 ### Set up coordinator and adviser accounts
 
@@ -35,6 +37,7 @@ Sign out and back in to refresh the session. Coordinators can promote registered
 
 - `GET /api/health` — API health check
 - `POST /api/auth/register` and `POST /api/auth/login` — create an account or start a session
+- `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` — email a short-lived reset link and update the password
 - `GET /api/auth/me` and `POST /api/auth/logout` — retrieve or end the current session
 - `GET /api/projects` — list the signed-in user's projects
 - `POST /api/projects` and `PATCH`/`DELETE /api/projects/:id` — manage a research project
@@ -47,5 +50,6 @@ Sign out and back in to refresh the session. Coordinators can promote registered
 - `GET /api/admin/users` and `PATCH /api/admin/users/:id/role` — coordinator account management
 
 Document uploads accept PDF, DOC, or DOCX files up to 20 MB and are stored privately in Vercel Blob.
+Password reset links expire after 30 minutes and can be used once. Reset requests return the same confirmation for registered and unregistered addresses. The database stores only a hash of each reset token.
 
 The schema also includes milestones, submissions, and adviser feedback tables for the planned workflow.
